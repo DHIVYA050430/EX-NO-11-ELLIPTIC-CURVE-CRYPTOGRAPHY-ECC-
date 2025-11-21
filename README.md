@@ -24,89 +24,113 @@ To Implement ELLIPTIC CURVE CRYPTOGRAPHY(ECC)
 
 ## Program:
 
-```py
+```
+#include <stdio.h>
 
-import random
+// A simple structure to represent points on the elliptic curve
+typedef struct {
+    long long int x, y;
+} Point;
 
-# Elliptic Curve over Fp: y^2 = x^3 + a*x + b
-class Curve:
-    def __init__(self, a, b, p, G):
-        self.a = a
-        self.b = b
-        self.p = p
-        self.G = G
+// Function to compute modular inverse (using Extended Euclidean Algorithm)
+long long int modInverse(long long int a, long long int m) {
+    long long int m0 = m, t, q;
+    long long int x0 = 0, x1 = 1;
+    if (m == 1) return 0;
+    while (a > 1) {
+        q = a / m;
+        t = m;
+        m = a % m, a = t;
+        t = x0;
+        x0 = x1 - q * x0;
+        x1 = t;
+    }
+    if (x1 < 0) x1 += m0;
+    return x1;
+}
 
-    def inv_mod(self, k):
-        return pow(k, -1, self.p)
+// Function to perform point addition on elliptic curves
+Point pointAddition(Point P, Point Q, long long int a, long long int p) {
+    Point R;
+    long long int lambda;
+    
+    // Check if P == Q (Point doubling)
+    if (P.x == Q.x && P.y == Q.y) {
+        lambda = (3 * P.x * P.x + a) * modInverse(2 * P.y, p) % p;
+    } else { // Point addition
+        lambda = (Q.y - P.y) * modInverse(Q.x - P.x, p) % p;
+    }
 
-    def add(self, P, Q):
-        if P is None: return Q
-        if Q is None: return P
+    // Calculate resulting point
+    R.x = (lambda * lambda - P.x - Q.x) % p;
+    R.y = (lambda * (P.x - R.x) - P.y) % p;
+    
+    // Ensure values are positive
+    R.x = (R.x + p) % p;
+    R.y = (R.y + p) % p;
 
-        x1, y1 = P
-        x2, y2 = Q
+    return R;
+}
 
-        if x1 == x2 and y1 != y2:
-            return None
+// Function to perform scalar multiplication (Elliptic Curve Point Multiplication)
+Point scalarMultiplication(Point P, long long int k, long long int a, long long int p) {
+    Point result = P;
+    k--; // Subtract 1 because we start with the base point
 
-        if P == Q:
-            s = ((3 * x1 * x1 + self.a) * self.inv_mod(2 * y1)) % self.p
-        else:
-            s = ((y2 - y1) * self.inv_mod(x2 - x1)) % self.p
+    while (k > 0) {
+        result = pointAddition(result, P, a, p); // Add the point to itself (k times)
+        k--;
+    }
 
-        x3 = (s * s - x1 - x2) % self.p
-        y3 = (s * (x1 - x3) - y1) % self.p
-        return (x3, y3)
+    return result;
+}
 
-    def mult(self, k, P):
-        R = None
-        while k > 0:
-            if k & 1:
-                R = self.add(R, P)
-            P = self.add(P, P)
-            k >>= 1
-        return R
+int main() {
+    long long int p, a, b, privateA, privateB;
+    Point G, publicA, publicB, sharedSecretA, sharedSecretB;
 
+    // Step 1: Input parameters of the elliptic curve
+    printf("Enter the prime number (p): ");
+    scanf("%lld", &p);
+    printf("Enter the curve parameters (a and b) for equation y^2 = x^3 + ax + b: ");
+    scanf("%lld %lld", &a, &b);
+    printf("Enter the base point G (x and y): ");
+    scanf("%lld %lld", &G.x, &G.y);
 
-# Example parameters
-p = 9739
-a = 497
-b = 1768
-G = (1804, 5368)
+    // Step 2: Alice and Bob input private keys
+    printf("Enter Alice's private key: ");
+    scanf("%lld", &privateA);
+    printf("Enter Bob's private key: ");
+    scanf("%lld", &privateB);
 
-curve = Curve(a, b, p, G)
+    // Step 3: Compute public keys (Elliptic Curve Point Multiplication)
+    publicA = scalarMultiplication(G, privateA, a, p); // Alice's public key
+    publicB = scalarMultiplication(G, privateB, a, p); // Bob's public key
 
-# Key generation
-private_key = random.randint(1, p - 1)
-public_key = curve.mult(private_key, G)
+    printf("Alice's public key: (%lld, %lld)\n", publicA.x, publicA.y);
+    printf("Bob's public key: (%lld, %lld)\n", publicB.x, publicB.y);
 
-print("Private Key:", private_key)
-print("Public Key:", public_key)
+    // Step 4: Compute shared secrets (Elliptic Curve Point Multiplication)
+    sharedSecretA = scalarMultiplication(publicB, privateA, a, p); // Alice's shared secret
+    sharedSecretB = scalarMultiplication(publicA, privateB, a, p); // Bob's shared secret
 
-# Message encoding as a point (for demo)
-M = (4726, 3853)  # Pretend message point (on curve)
-print("\nMessage Point:", M)
+    // Step 5: Display shared secret
+    printf("Shared secret computed by Alice: (%lld, %lld)\n", sharedSecretA.x, sharedSecretA.y);
+    printf("Shared secret computed by Bob: (%lld, %lld)\n", sharedSecretB.x, sharedSecretB.y);
 
-# Encryption
-k = random.randint(1, p - 1)
-C1 = curve.mult(k, G)
-C2 = curve.add(M, curve.mult(k, public_key))
-print("\nCiphertext:")
-print("C1 =", C1)
-print("C2 =", C2)
+    if (sharedSecretA.x == sharedSecretB.x && sharedSecretA.y == sharedSecretB.y) {
+        printf("Key exchange successful. Both shared secrets match!\n");
+    } else {
+        printf("Key exchange failed. Shared secrets do not match.\n");
+    }
 
-# Decryption
-S = curve.mult(private_key, C1)
-S_neg = (S[0], (-S[1]) % p)
-M_decrypted = curve.add(C2, S_neg)
-
-print("\nDecrypted Message Point:", M_decrypted)
+    return 0;
+}
 ```
 
-
-
 ## Output:
-<img width="811" height="460" alt="image" src="https://github.com/user-attachments/assets/29cad935-de5a-4589-81be-f1a93a977577" />
+<img width="817" height="406" alt="ex11" src="https://github.com/user-attachments/assets/24b54647-4d69-4192-b9ef-e0ebe181a24d" />
+
 
 
 ## Result:
